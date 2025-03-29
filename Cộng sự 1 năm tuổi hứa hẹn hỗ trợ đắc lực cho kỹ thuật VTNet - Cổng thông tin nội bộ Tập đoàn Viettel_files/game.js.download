@@ -1,0 +1,401 @@
+if(typeof config === 'undefined') var config = '';
+class Ajax {
+
+    constructor(hasFile = false) {
+        this.hasFile = hasFile;
+    }
+
+    call(url, data, type = 'POST') {
+        return new Promise((resolve, reject) => {
+
+            let options = {
+                url: url,
+                type: type,
+                data: data,
+                datatype: 'JSON',
+                beforeSend: function () {
+
+                },
+                success: function (data) {
+                    resolve(data);
+                },
+                error: function (xhr) {
+                    reject(xhr);
+                },
+                complete: function () {
+
+                },
+            };
+
+            if (this.hasFile) {
+                options = {
+                    ...options, ...{
+                        cache: false,
+                        processData: false,
+                        contentType: false,
+                    }
+                }
+            }
+
+            $.ajax(options);
+        })
+    }
+}
+
+class AjaxList {
+
+    constructor(url, data = {}, configFilter = {}, dataType = 'GET') {
+        this.data = {
+            'category_id': 0,
+        }
+        if (typeof data.category_id !== "undefined") {
+            delete this.data.category_id
+        }
+        this.data = {...this.data, ...data};
+        this.url = url;
+        this.configInput = configFilter;
+        this.dataType = dataType;
+        this.old = {};
+        this.old_info = {};
+        
+    }
+
+    run(boxList = '') {
+
+        if (typeof boxList === "string" && boxList.length > 0) {
+            this.boxList = boxList;
+        }
+
+        this.ajax(this.data);
+        this.pagination();
+        this.tab();
+        this.filter();
+    }
+
+    runDone(data) {}
+
+    done(func) {
+        this.runDone = func;
+    }
+
+    ajax(dataAjax = {}, boxList = '') {
+        let _this = this;
+
+        if (jQuery.isEmptyObject(dataAjax)) {
+            dataAjax = _this.data;
+        }
+
+        if (typeof boxList === "string" && boxList.length > 0) {
+            _this.boxList = boxList;
+        }
+
+        let key_old = Object.entries(_this.data).map(([key, val]) => `${key}=${val}`).join('&');
+        var key_old_info = Object.entries(_this.data).map(([key, val]) => `${key}=${val}`).join('&');
+
+        if (typeof _this.old[key_old] !== "undefined") {
+            $(_this.boxList).html(_this.old[key_old].data.html || '');
+            _this.runDone( _this.old[key_old] );
+            return;
+        }
+
+        return new Ajax()
+            .call(_this.url, dataAjax, _this.dataType)
+            .then((res) => {
+                _this.old[key_old] = res;
+                _this.old_info[key_old_info] = res;
+                if (typeof _this.boxList !== "undefined") {
+                    $(_this.boxList).html(res.data.html || '');
+                }
+                _this.runDone(res);
+                return res;
+            })
+    }
+
+    pagination() {
+        let _this = this;
+        $(document).on("click", ".pagination a", function (event) {
+            event.preventDefault();
+            _this.data.page = $(this).attr('href').split('page=')[1] || 0;
+
+            _this.ajax(_this.data);
+        });
+    }
+
+    // block TAB required id "tabCategory"
+    tab(idBox = '#tabCategory') {
+        let _this = this;
+        $(idBox).on("click", "a", function (event) {
+            event.preventDefault();
+            let id = $(this).data('id');
+            if (parseInt(_this.data.category_id) !== parseInt(id)) {
+                $(this).closest(idBox).find('a').removeClass('active');
+                $(this).addClass('active');
+                delete _this.data.page;
+                _this.data.category_id = id;
+                _this.ajax(_this.data);
+            }
+        });
+    }
+
+    // block FORM required id "formFilter"
+    filter(idBox = '#formFilter', isAuto = true) {
+        let _this = this;
+
+        if (isAuto) {
+
+            if (!jQuery.isEmptyObject(_this.configInput)) {
+
+                Object.keys(_this.configInput).map(function (key, index) {
+
+                    $(idBox).on("change", _this.configInput[key], function (event) {
+
+                        delete _this.data.page;
+                        _this.data[key] = $(this).val();
+                        _this.ajax(_this.data);
+                    });
+                });
+            }
+        } else {
+
+            $(document).on("submit", idBox, function (event) {
+                event.preventDefault();
+
+                let data = $(this).serializeArray();
+
+                new Promise((resolve => {
+                    data.map((e, i) => {
+                        _this.data[e.name] = e.value;
+                    });
+                    delete _this.data.page;
+                    resolve(_this.data);
+                })).then((res) => {
+                    _this.ajax(res);
+                });
+
+            })
+
+        }
+    }
+    selectTwo(idBox = '#formFilter',classSelect2){
+        $(idBox).find(classSelect2).select2();
+        $(idBox).on('select2:select','classSelect2', function (e) {
+            let obj = e.params.data;
+            delete _this.data.page;
+            _this.data['event']=obj.id;
+            _this.ajax(_this.data);
+        });
+    }
+    oldInfo(){
+        return this.old_info;
+    }
+
+}
+
+var WIDGET_GAME_ENGLISH = {
+    init () {
+        if ($('.html-widget-game-english').length) {
+            this.run();
+        }
+    },
+    run () {
+        let ajax_list = new AjaxList('/ajax-get-rank-widget-games-english');
+        ajax_list.ajax({}, '.html-widget-game-english');
+    }
+}
+
+WIDGET_GAME_ENGLISH.init();
+
+let categoryId = $('#cateRank li.active').data('id');
+let methodId = $('#formFilterRank [name="method"]').val();
+let week = $('#formFilterRank [name="week"]').val();
+let quarter = $('#formFilterRank [name="quarter"]').val();
+let event = $('#formFilterRank [name="event"]').val();
+
+
+
+// $('#formFilterRank').on('select2:select','.select-event', function (e) {
+//     var data = e.params.data;
+//     $('.input-event').val(data.id);
+//     $('.input-event').change();
+// });
+$('#cateRank li').on('click',function(){
+    $('#circularG').show();
+    $('.mess_null').css('display','none');
+    $('#myRanking').html('');
+    $('#infoRanking').html('');
+    $('#listRanking').html('');
+});
+$('.search-radio-ranking .i-check').on('click',function(){
+    $('#circularG').show();
+    $('.mess_null').css('display','none');
+    $('#myRanking').html('');
+    $('#infoRanking').html('');
+    $('#listRanking').html('');
+});
+$('select[name="quarter"]').on('change',function(){
+    $('#circularG').show();
+    $('.mess_null').css('display','none');
+    $('#myRanking').html('');
+    $('#infoRanking').html('');
+    $('#listRanking').html('');
+});
+$('select[name="week"]').on('change',function(){
+    $('#circularG').show();
+    $('.mess_null').css('display','none');
+    $('#myRanking').html('');
+    $('#infoRanking').html('');
+    $('#listRanking').html('');
+});
+$('select[name="quarter"]').on('change',function(){
+    $('#circularG').show();
+    $('.mess_null').css('display','none');
+    $('#myRanking').html('');
+    $('#infoRanking').html('');
+    $('#listRanking').html('');
+});
+$('select[name="event"]').on('change',function(){
+    $('#circularG').show();
+    $('.mess_null').css('display','none');
+    $('#myRanking').html('');
+    $('#infoRanking').html('');
+    $('#listRanking').html('');
+});
+$('.search-input-ranking input[name="keyword"]').on('change',function(){
+    $('#circularG').show();
+    $('.mess_null').css('display','none');
+    $('#myRanking').html('');
+    $('#infoRanking').html('');
+    $('#listRanking').html('');
+})
+
+
+$('#cateRank li').on("click", function () {
+    $('#cateRank li').removeClass('active');
+    $(this).addClass('active');
+    let id = $(this).data('id');
+    $('.search-select-ranking .form-control').removeClass('show');
+    $('.search-select-ranking .form-control.s' + id).addClass('show');
+});
+
+let data = {
+    category_id: categoryId,
+    method: methodId,
+    week: week,
+    quarter: quarter,
+    event: event,
+    info: '',
+}
+
+if(config){
+    var ajax_list = new AjaxList(config.routes.zone, data, {
+        method: '[name="method"]',
+        keyword: '[name="keyword"]',
+        week: '[name="week"]',
+        quarter: '[name="quarter"]',
+        event: '[name="event"]',
+    
+    });
+    ajax_list.tab('#cateRank');
+    ajax_list.pagination();
+    ajax_list.filter('#formFilterRank', true);
+    ajax_list.selectTwo('#formFilterRank','.select-event');
+    ajax_list.ajax({}, '#listRanking');
+    ajax_list.done((res) => {
+        $('.wrap-list-ranking #circularG').hide();
+    
+    
+        if($('.method_input').val()==2) $('.name-group-game').show();
+        else $('.name-group-game').hide();
+    
+        
+        $('#myRanking').html(res.data.html_my);
+        $('#infoRanking').html(res.data.html_info);
+        
+        if($('.detail-person-ranking').length==0 && $('.rank_list').length==0 && $('.ranking-me').length==0){
+            $('.mess_null').css('display','flex');
+        }else $('.mess_null').css('display','none');
+    
+    });
+}
+
+// $('.search-radio-ranking input[name="method"]').on('click',function(){
+//     if($(this).val()==2) $('.name-group-game').show();
+//     else $('.name-group-game').hide();
+// });
+
+$('.select2-container').addClass('form-control');
+$('.select2-container').addClass('S3');
+$('#nav_user_name').dropdown();
+
+$('#cateRank li').on('click',function(){
+    var data_id = $(this).attr('data-id');
+
+    if(data_id==3){
+        $('#select-ranking').addClass('event');
+    }else if(data_id==2){
+        $('#select-ranking').removeClass('event');
+    }else if(data_id==1){
+        $('#select-ranking').removeClass('event');
+    }
+})
+
+
+$('.avt-game').each(function(){
+    let src = $(this).attr('src');
+    
+})
+$('input[name="method"]').on('click',function(){
+    let val = $(this).val();
+    $('.method_input').val(val);
+})
+
+if(config){
+    var old_info = ajax_list.oldInfo();
+    // click user detail
+    $('#listRanking').on('click','.item-person-ranking',function(event){
+
+    let html_load = '<div class="detail-person-ranking"><div id="circularG" class="circularG_two"><div id="circularG_1" class="circularG"></div><div id="circularG_2" class="circularG"></div><div id="circularG_3" class="circularG"></div><div id="circularG_4" class="circularG"></div><div id="circularG_5" class="circularG"></div><div id="circularG_6" class="circularG"></div><div id="circularG_7" class="circularG"></div><div id="circularG_8" class="circularG"></div></div></div>';
+    let data_code = $(this).data('code');
+
+
+    if(!$(this).hasClass('active')){
+        $('.item-person-ranking').removeClass('active');
+        $(this).addClass('active');
+        $('#infoRanking').html(html_load);
+        data_info = {
+            category_id: $('#cateRank li.active').data('id'),
+            method: $('.method_input').val(),
+            week: $('#formFilterRank [name="week"]').val(),
+            quarter: $('#formFilterRank [name="quarter"]').val(),
+            event: $('#formFilterRank [name="event"]').val(),
+            info: data_code,
+        }
+        
+        key_old_info = Object.entries(data_info).map(([key, val]) => `${key}=${val}`).join('&');
+        
+        if (typeof old_info [key_old_info] !== "undefined") {
+            $('#infoRanking').html(old_info[key_old_info].data.html_info || '');
+            return;
+        }
+        
+        $.ajaxSetup({
+            headers: {
+                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+            }
+        });
+        $.ajax({
+            type: "GET",
+            url: config.routes.zone,
+            data:  data_info,
+            dataType: "json",
+            success: function (res) {
+                old_info[key_old_info] = res;
+                console.log(old_info);
+                $('#infoRanking').html(res.data.html_info);
+            }
+        });
+    }
+
+    })
+// end
+}
